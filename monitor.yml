@@ -1,0 +1,49 @@
+name: Qeema Website Monitor
+
+on:
+  schedule:
+    # Every 30 minutes. Change to */15 for every 15 minutes if this repo is
+    # public (unlimited free Actions minutes) - see README.md for the math.
+    - cron: "*/30 * * * *"
+  workflow_dispatch: {} # lets you click "Run workflow" manually any time
+
+# Only one run at a time, and never let a slow run block the next scheduled one
+concurrency:
+  group: qeema-monitor
+  cancel-in-progress: false
+
+permissions:
+  contents: write # needed so the workflow can commit data/state.json back
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run monitor
+        run: python monitor.py
+        env:
+          SITE_URL: ${{ vars.SITE_URL }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          ALERT_TO: ${{ secrets.ALERT_TO }}
+
+      - name: Save monitoring state
+        if: always()
+        run: |
+          git config user.name "qeema-monitor-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add data/
+          git diff --cached --quiet || git commit -m "chore: update monitor state"
+          git push
